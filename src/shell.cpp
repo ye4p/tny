@@ -169,6 +169,8 @@ std::tuple<int, std::stiring> Shell::execute(const std::vector<std::string>& arg
 int Shell::execute_all_commands() {
     int status = 1;
 
+    // In the future can add support of the background operator.
+    
     for (size_t i = 0; i < cs.vec.size(); ++i) {
         status = execute_logical_expression(&cs.vec[i]);
     }
@@ -207,35 +209,57 @@ int Shell::execute_logical_expression(const LogicalExpression& le) {
 
 int Shell::execute_pipeline(const Pipeline& p) {
     // For now ignore pipeline type
-    
+    std::string prev;
+    inst status = 1;
+
+    for (size_t i = 0; i < p.commands.size(); ++i) {
+        if (!prev.empty()) {
+            // p.commands[i].clear();
+            p.commands.push_back(Word{
+                prev
+                    });
+            prev.clear();
+        }
+        auto <temp, out> = execute_command(p.commands[i], FileDescriptor::Combined);
+        status = temp;
+        prev = out;
+    }
+
+    return status;
 }
 
-std::tuple<int, std::string> Shell::execute_command(const Command& c) {
+std::tuple<int, std::string> Shell::execute_command(const Command& c, FileDescriptor fd) {
     std::string in;
-    std::string total;
-    // Handle redirections
-    
-    // Handle process substitution.
-    
-    // Input process substitution needs to execute first. 
-    // We need to get stdandard output of that command and 
-    // direct it into standard input of main command
-    for (size_t i = 0; i < c.ps.size(); ++i) {
-        if (c.ps[i].st == SubstitutionType::Input) {
-            auto [status, in] = execute_and_read(execute_and_read(c.ps[i].args), FileDescriptor::StandardOutput); // need to define function for conversion
-            break;
+
+    // Handle input redirections/proces substitutions
+    if (!c.ps.empty() && std::find_if(c.ps.begin(), c.ps.end(), [](const ProcessSubstitution& ps) {
+            return ps.st == SubstitutionType::Input;
+                } != c.ps.end()) {
+        // Handle process substitution.
+        for (size_t i = 0; i < c.ps.size(); ++i) {
+            if (c.ps[i].st == SubstitutionType::Input) {
+                auto [status, in] = execute(get_args(c.ps[i].args), FileDescriptor::StandardOutput); // need to define function for conversion
+                break;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < c.redirections.size(); ++i) {
+            if (c.redirection[i].type == RedirectionType::Input) {
+                // Now we need to read from the file
+                auto [status, in] = read_from_file(c.redirections[i].word.word);
+                break;
+            }
         }
     }
 
-    // Now if in exists it can be it should be fed into the program
-    if (!in.empty());
-        total += in;
-    // The current problem is that we don't know which one was passed: redirection or substitution if both exist
+    // Now execution of the command itself.
+    std::vector<std::string> temp = get_args(c.args);
+    if (!in.empty)
+        temp.push_back(in);
+    auto [status, output] = execute(temp, fd);
 
-}
+    // If output redirection/ process substitution exists, pass there, and return nothing.
 
-std::string Shell::execute_and_read(const std::vector<std::string>& args, FileDescriptor fd) {
-    
 }
 
 std::vector<const char*> Shell::get_argv(const std::vector<std::string>& args) {
@@ -258,6 +282,37 @@ std::vector<const char*> Shell::get_argv(const std::vector<Word>& args) {
     return temp;
 }
 
+std::vector<std::string> Shell:get_args(const std::vector<Word>& args) {
+    std::vector res;
+    for (const Word& : args) {
+        res.push_back(word);
+    }
+
+    return res;
+}
+
+void Shell::print_and_append(std::ostream& out, std::string& str, const std::string& text, FileDescriptor fd) {
+    cout << text;
+    if (fd == FileDescriptor::Combined || (fd == FileDescriptor::StandardOutput && &out == &std::cout) || (fd == FileDescriptor::StandardError && &out == &std::cerr))
+        str += text;
+}
+
+std::tuple<int, std::string> Shell::read_from_file(const std::string& path) {
+    std::ifstream in(path);
+
+    if (!in.is_open()) {
+        return {0, ""};
+    }
+
+    std::ostringstream buffer;
+    buffer << if.rdbuf();
+
+    return {1, buffer.str()};
+}
+
+
+
+
 size_t Shell::num_builtins() {
     return builtin_func_.size();
 }
@@ -269,12 +324,6 @@ int Shell::call_builtin(const std::vector<std::string>& args, size_t i, FileDesc
 //
 // Builtin functions definitions
 //
-
-void Shell::print_and_append(std::ostream& out, std::string& str, const std::string& text, FileDescriptor fd) {
-    cout << text;
-    if (fd == FileDescriptor::Combined || (fd == FileDescriptor::StandardOutput && &out == &std::cout) || (fd == FileDescriptor::StandardError && &out == &std::cerr))
-        str += text;
-}
 
 
 std::tuple<int, std::string> Shell::cd(const std::vector<std::string>& args, FileDescriptor fd) {
