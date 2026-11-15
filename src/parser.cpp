@@ -44,12 +44,12 @@ std::tuple<ParseStatus, std::vector<Token>> Lexer::tokenize() {
                     push_token_if_nonempty();
                     quote_active_ = true;
                     quote_type_ = curr();
-                    tt_ = TokenType::String;
+                    tt_ = TokenType::StringQuote;
                     tok_str_.clear();
                 } else if (quote_active_ && curr() == quote_type_) {
                     quote_active_ = false;
                     quote_type_ = ' ';
-                    push_token();
+                    // push_token();
                 }
                 break;
             case '<': // Can be either input redirection < or process substitution <()
@@ -292,9 +292,10 @@ Command Parser::parse_command() {
                 curr().tt == TokenType::InputRedirection || 
                 curr().tt == TokenType::OutputRedirection || 
                 curr().tt == TokenType::String ||
+                curr().tt == TokenType::StringQuote ||
                 curr().tt == TokenType::ProcessSubstitutionBegin
                 )) {
-        if (curr().tt == TokenType::String) {
+        if (curr().tt == TokenType::String || curr().tt == TokenType::StringQuote) {
             vec.emplace_back(
                 parse_word()
             );
@@ -314,7 +315,7 @@ Command Parser::parse_command() {
         }
     }
 
-    while (!is_oob() && curr().tt == TokenType::String) {
+    while (!is_oob() && (curr().tt == TokenType::String || curr().tt == TokenType::StringQuote)) {
         vec.emplace_back(
             parse_word()
         );
@@ -353,7 +354,8 @@ Word Parser::parse_word() {
 
     // In theory it should only add TokenType::String
     return Word {
-        t.content
+        .word = t.content,
+        .quote = t.tt == TokenType::StringQuote ? true : false;
     };
 }
 

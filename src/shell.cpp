@@ -150,6 +150,16 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
             std::cout << "stderr_data: " << stderr_data << '\n';
         }
 
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+        } else if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status); // 0 success, other - error
+            return {!exit_code, total};
+        } else  if (WIFSIGNALED(status)) {
+            // int term_sig = WTERMSIG(status);
+        }
+
         return {1, total};
     }
 
@@ -225,7 +235,8 @@ int Shell::execute_pipeline(Pipeline& p) {
         if (!prev.empty()) {
             // p.commands[i].clear();
             p.commands[i].args.emplace_back(Word{
-                prev
+                .word = prev,
+                .quote = false,
             });
             prev.clear();
         }
@@ -266,7 +277,8 @@ std::tuple<int, std::string> Shell::execute_command(Command& c, FileDescriptor f
     }
 
     // Now execution of the command itself.
-    std::vector<std::string> temp = get_args(c.args);
+    std::vector<std::string> temp = expand_globs(c.args);
+
     if (!in.empty())
         temp.push_back(in);
     auto [status, output] = execute(temp, fd);
@@ -285,7 +297,10 @@ std::tuple<int, std::string> Shell::execute_command(Command& c, FileDescriptor f
     } else {
         for (size_t i = 0; i < c.ps.size(); ++i) {
             if (c.ps[i].st == SubstitutionType::Output) {
-                c.ps[i].args.push_back(Word{output});
+                c.ps[i].args.push_back(Word{
+                        .word = output,
+                        .quote = false,
+                        });
                 output_redirected = true;
                 return execute(get_args(c.ps[i].args), FileDescriptor::None); // Right now ignores all the other types of redirection
             }
@@ -319,6 +334,7 @@ std::vector<char*> Shell::get_argv(const std::vector<Word>& args) {
 
     return temp;
 }
+
 
 std::vector<std::string> Shell::get_args(const std::vector<Word>& args) {
     std::vector<std::string> res;
@@ -436,4 +452,25 @@ std::tuple<int, std::string> Shell::type(const std::vector<std::string>& args, F
         print_and_append(std::cout, total, msg2, fd);
     }
     return {1, total};
+}
+
+
+//
+// GLOB EXPANSION
+//
+
+std::vector<std::string> Shell::expand_globs(const std::vector<Word>& args) {
+    std::vector<std::string> res(args.size());
+    for (const Word& w : args) {
+        if (w.quote) {
+            res.push_back(w.word);
+        } else {
+            std::vector<std::string> expanded = expand_word(w.word);
+            // now try to expand all the globs.
+        }
+    }
+}
+
+std::vector<std::string> Shell::expand_word(const std::string& w) {
+    
 }

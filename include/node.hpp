@@ -7,6 +7,7 @@
 
 struct Word {
     std::string word;
+    bool quote;
 };
 
 enum class RedirectionType {

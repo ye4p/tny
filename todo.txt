@@ -1,5 +1,2 @@
-Fix:
-logical OR
-
 Add:
 Glob support

@@ -18,7 +18,7 @@ enum class TokenType {
 
     Whitespace = 0,
     String = 1,
-    // SingleQuote = 2,
+    StringQuote = 2,
     // DoubleQuote = 3,
     Pipeline = 4,       // |
     InputRedirection = 5,

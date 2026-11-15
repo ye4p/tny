@@ -80,4 +80,7 @@ public:
     std::tuple<int, std::string> pwd(const std::vector<std::string>& args, FileDescriptor fd);
     std::tuple<int, std::string> type(const std::vector<std::string>& args, FileDescriptor fd);
 
+    // Glob expansion:
+    std::vector<std::string> expand_globs(const std::vector<Word> args);
+    std::vector<std::string> expand_word(const std::string& w);
 };
