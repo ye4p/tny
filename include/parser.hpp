@@ -75,14 +75,13 @@ public:
 class Parser {
     const std::vector<Token>* tokens_ptr_;
     std::vector<Token> tokens_;
-    std::vector<std::string>& args_;
 
     // Variables used in parsing:
     size_t position_;
 
 
 public:
-    Parser(std::vector<std::string>& args);
+    Parser();
     void point_to(const std::vector<Token>* tokens);
     // Ex: cat < input.txt | grep "hello world" > output.txt && echo success
     CommandSeparator parse();
