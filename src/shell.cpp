@@ -8,7 +8,8 @@ void Shell::loop() {
 
         std::string line;
         Lexer lexer;
-        Parser parser(args_);
+        Parser parser;
+
         do {
             std::getline(std::cin, line);
 
@@ -22,21 +23,19 @@ void Shell::loop() {
             parser.point_to(&tokens);
             parser.cleanup();
 
-            if (ps =! ParseStatus::KeepParsing)
+            if (ps != ParseStatus::KeepParsing)
                 break;
         } while (true);
 
         cs = parser.parse();
         std::cout << cs;
 
-        status = executeAllCommands();
+        status = execute_all_commands();
     } while (status);
 }
 
 std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args, FileDescriptor fd) {
     pid_t pid; // Removed wpid cause its unnecessary at the moment
-    int status;
-    pid = fork();
 
     int out_pipe[2];
     int err_pipe[2];
@@ -50,10 +49,13 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
         throw std::runtime_error("stderr pipe failed");
     }
 
+    pid = fork();
+
     if (pid == 0) {
         // Child process:
         // Construct a vector of char*:
-        char** argv = get_argv(args);
+        std::vector<char*> argv_storage = get_argv(args);
+        char* const* argv = argv_storage.data();
 
         close(out_pipe[0]);
         close(err_pipe[0]);
@@ -63,7 +65,7 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
         }
 
         close(out_pipe[1]);
-        close(out_pipe[2]);
+        close(out_pipe[1]);
 
         if (execvp(argv[0], argv) == -1)
             perror("tny");
@@ -73,6 +75,7 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
         perror("tny");
     } else {
         // Parent process:
+
         close(out_pipe[1]);
         close(err_pipe[1]);
 
@@ -92,7 +95,7 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
 
             if (out_open) {
                 FD_SET(out_pipe[0], &fds);
-                maxfd - out_pipe[0];
+                maxfd = out_pipe[0];
             }
 
             if (err_open) {
@@ -104,7 +107,7 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
             int ready = select(maxfd + 1, &fds, nullptr, nullptr, nullptr);
 
             if (ready == -1) {
-                if (errno = EINTR) continue;
+                if (errno == EINTR) continue;
                 perror("select");
                 break;
             }
@@ -138,24 +141,30 @@ std::tuple<int, std::string> Shell::launch(const std::vector<std::string>& args,
         if (err_open) close(err_pipe[0]);
 
         std::string total;
-        if (fd == FileDescriptor::StandardOutput || fd == FileDescriptor::Combined)
+        if (fd == FileDescriptor::StandardOutput || fd == FileDescriptor::Combined) {
             total += stdout_data;
-        if (fd == FileDescriptor::StandardError || fd == FileDescriptor::Combined)
+            std::cout << "stdout_data: " << stdout_data << '\n';
+        }
+        if (fd == FileDescriptor::StandardError || fd == FileDescriptor::Combined) {
             total += stderr_data;
+            std::cout << "stderr_data: " << stderr_data << '\n';
+        }
 
         return {1, total};
-
-        // do {
-        //     waitpid(pid, &status, WUNTRACED);
-        // } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
 
-    return 1;
+    return {1, ""};
 }
 
-std::tuple<int, std::stiring> Shell::execute(const std::vector<std::string>& args, FileDescriptor fd) {
+std::tuple<int, std::string> Shell::execute(const std::vector<std::string>& args, FileDescriptor fd) {
     if (args.empty())
         return {1, ""}; // Since no command was entered.
+
+    std::cout << "trying to execute command "<< args.at(0) << " and the following arguments: \n";
+    for (size_t i = 1; i < args.size(); ++i) {
+        std::cout << args[i] << '\n';
+    }
+    std::cout << "File descriptor chosen is " << static_cast<int>(fd) << '\n';
 
     for (size_t i = 0; i < num_builtins(); ++i) {
         if (args[0] == builtin_str_[i]) {
@@ -172,25 +181,25 @@ int Shell::execute_all_commands() {
     // In the future can add support of the background operator.
     
     for (size_t i = 0; i < cs.vec.size(); ++i) {
-        status = execute_logical_expression(&cs.vec[i]);
+        status = execute_logical_expression(cs.vec[i]);
     }
 
     return status;
 }
 
-int Shell::execute_logical_expression(const LogicalExpression& le) {
+int Shell::execute_logical_expression(LogicalExpression& le) {
     if (le.ops.size() + 1 != le.pipelines.size()) {
         throw std::runtime_error("Number of expressions and logical operators doesn't match\n");
     }
 
     if (le.ops.empty()) {
-        return execute_pipeline(&le.pipelines[0]);
+        return execute_pipeline(le.pipelines[0]);
     }
 
     size_t i = 0;
     int status;
     while (i < le.pipelines.size()) {
-        status = execute_pipeline(&le.pipelines[i]);
+        status = execute_pipeline(le.pipelines[i]);
         if (status) { // That short circuits all logical OR
             while (i < le.ops.size() && le.ops[i] == LogicalOperator::Or) {
                 ++i;
@@ -207,46 +216,50 @@ int Shell::execute_logical_expression(const LogicalExpression& le) {
     return status;
 }
 
-int Shell::execute_pipeline(const Pipeline& p) {
+int Shell::execute_pipeline(Pipeline& p) {
     // For now ignore pipeline type
     std::string prev;
-    inst status = 1;
+    int status = 1;
 
     for (size_t i = 0; i < p.commands.size(); ++i) {
         if (!prev.empty()) {
             // p.commands[i].clear();
-            p.commands.push_back(Word{
+            p.commands[i].args.emplace_back(Word{
                 prev
-                    });
+            });
             prev.clear();
         }
-        auto <temp, out> = execute_command(p.commands[i], FileDescriptor::Combined);
+        auto [temp, out] = execute_command(p.commands[i], FileDescriptor::Combined);
         status = temp;
         prev = out;
     }
 
+    // std::cout << prev;
+
     return status;
 }
 
-std::tuple<int, std::string> Shell::execute_command(const Command& c, FileDescriptor fd) {
+std::tuple<int, std::string> Shell::execute_command(Command& c, FileDescriptor fd) {
     std::string in;
 
     // Handle input redirections/proces substitutions
     if (!c.ps.empty() && std::find_if(c.ps.begin(), c.ps.end(), [](const ProcessSubstitution& ps) {
             return ps.st == SubstitutionType::Input;
-                } != c.ps.end()) {
+                }) != c.ps.end()) {
         // Handle process substitution.
         for (size_t i = 0; i < c.ps.size(); ++i) {
             if (c.ps[i].st == SubstitutionType::Input) {
-                auto [status, in] = execute(get_args(c.ps[i].args), FileDescriptor::StandardOutput); // need to define function for conversion
+                auto [status, temp] = execute(get_args(c.ps[i].args), FileDescriptor::StandardOutput); // need to define function for conversion
+                in = temp;
                 break;
             }
         }
     } else {
         for (size_t i = 0; i < c.redirections.size(); ++i) {
-            if (c.redirection[i].type == RedirectionType::Input) {
+            if (c.redirections[i].type == RedirectionType::Input) {
                 // Now we need to read from the file
-                auto [status, in] = read_from_file(c.redirections[i].word.word);
+                auto [status, temp] = read_from_file(c.redirections[i].word.word);
+                in = temp;
                 break;
             }
         }
@@ -254,45 +267,70 @@ std::tuple<int, std::string> Shell::execute_command(const Command& c, FileDescri
 
     // Now execution of the command itself.
     std::vector<std::string> temp = get_args(c.args);
-    if (!in.empty)
+    if (!in.empty())
         temp.push_back(in);
     auto [status, output] = execute(temp, fd);
 
+    bool output_redirected = false;
     // If output redirection/ process substitution exists, pass there, and return nothing.
+    if (!c.redirections.empty()) {
+        for (size_t i = 0; i < c.redirections.size(); ++i) {
+            if (c.redirections[i].type == RedirectionType::Output) {
+                int status = write_into_file(c.redirections[i].word.word, output);
+                output_redirected = true;
+                (void)status;
+                break;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < c.ps.size(); ++i) {
+            if (c.ps[i].st == SubstitutionType::Output) {
+                c.ps[i].args.push_back(Word{output});
+                output_redirected = true;
+                return execute(get_args(c.ps[i].args), FileDescriptor::None); // Right now ignores all the other types of redirection
+            }
+        }
+    }
 
+    if (!output_redirected) {
+        std::cout << "SHELL OUTPUT: ";
+        std::cout << output;
+    }
+
+    return {status, output};
 }
 
-std::vector<const char*> Shell::get_argv(const std::vector<std::string>& args) {
-    std::vector<const char*> temp;
+std::vector<char*> Shell::get_argv(const std::vector<std::string>& args) {
+    std::vector<char*> temp;
     for (const auto& s : args) {
-        temp.push_back(s.data());
+        temp.push_back(const_cast<char*>(s.data()));
     }
     temp.push_back(nullptr);
 
     return temp;
 }
 
-std::vector<const char*> Shell::get_argv(const std::vector<Word>& args) {
-    std::vector<const char*> temp;
+std::vector<char*> Shell::get_argv(const std::vector<Word>& args) {
+    std::vector<char*> temp;
     for (const auto& s : args) {
-        temp.push_back(s.word.data());
+        temp.push_back(const_cast<char*>(s.word.data()));
     }
     temp.push_back(nullptr);
 
     return temp;
 }
 
-std::vector<std::string> Shell:get_args(const std::vector<Word>& args) {
-    std::vector res;
-    for (const Word& : args) {
-        res.push_back(word);
+std::vector<std::string> Shell::get_args(const std::vector<Word>& args) {
+    std::vector<std::string> res;
+    for (const Word& w: args) {
+        res.push_back(w.word);
     }
 
     return res;
 }
 
 void Shell::print_and_append(std::ostream& out, std::string& str, const std::string& text, FileDescriptor fd) {
-    cout << text;
+    out << text;
     if (fd == FileDescriptor::Combined || (fd == FileDescriptor::StandardOutput && &out == &std::cout) || (fd == FileDescriptor::StandardError && &out == &std::cerr))
         str += text;
 }
@@ -305,11 +343,21 @@ std::tuple<int, std::string> Shell::read_from_file(const std::string& path) {
     }
 
     std::ostringstream buffer;
-    buffer << if.rdbuf();
+    buffer << in.rdbuf();
 
     return {1, buffer.str()};
 }
 
+int Shell::write_into_file(const std::string& path, const std::string& content) {
+    std::ofstream out(path, std::ios::app);
+
+    if (!out.is_open()) {
+        return 0;
+    }
+
+    out << content;
+    return 1;
+}
 
 
 
@@ -317,7 +365,7 @@ size_t Shell::num_builtins() {
     return builtin_func_.size();
 }
 
-int Shell::call_builtin(const std::vector<std::string>& args, size_t i, FileDescriptor fd) {
+std::tuple<int, std::string> Shell::call_builtin(const std::vector<std::string>& args, size_t i, FileDescriptor fd) {
     return (this->*builtin_func_[i])(args, fd);
 }
 
@@ -343,10 +391,10 @@ std::tuple<int, std::string> Shell::cd(const std::vector<std::string>& args, Fil
     return {1, total};
 }
 
-std::tuple<int, std::string> Shell::help(const std::vector<std::string>& args, FileDescriptor fd) {
+std::tuple<int, std::string> Shell::help([[maybe_unused]] const std::vector<std::string>& args, FileDescriptor fd) {
     std::string total;
     const char* main_msg = "DG's tny shell\nType command with its arguments and click enter\nBuilt in programs:\n";
-    print_and_append(std::cout, total, main_mgs, fd);
+    print_and_append(std::cout, total, main_msg, fd);
 
     for (const std::string& s : builtin_str_) {
         const std::string temp = "  " + s + '\n';
@@ -359,14 +407,14 @@ std::tuple<int, std::string> Shell::help(const std::vector<std::string>& args, F
     return {1, total};
 }
 
-std::tuple<int, std::string> Shell::exit(const std::vector<std::string>& args, FileDescriptor fd) {
+std::tuple<int, std::string> Shell::exit([[maybe_unused]] const std::vector<std::string>& args, [[maybe_unused]] FileDescriptor fd) {
     return {0, ""};
 }
 
-std::tuple<int, std::string> Shell::pwd(const std::vector<std::string>& args, FileDescriptor fd) {
+std::tuple<int, std::string> Shell::pwd([[maybe_unused]] const std::vector<std::string>& args, FileDescriptor fd) {
     std::string total;
 
-    std::string path_msg =  std::filesystem::current_path() + '\n';
+    std::string path_msg = std::filesystem::current_path().string() + '\n';
     print_and_append(std::cout, total, path_msg, fd);
 
     return {1, total};

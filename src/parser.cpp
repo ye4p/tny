@@ -199,7 +199,7 @@ bool Lexer::push_token_if_nonempty() { // Returns true/false if non empty token 
 //  Parser function definitions
 //
 
-Parser::Parser(std::vector<std::string>& args) : tokens_ptr_(nullptr), args_(args), position_(0) {}
+Parser::Parser() : tokens_ptr_(nullptr), position_(0) {}
 
 void Parser::point_to(const std::vector<Token>* tokens_ptr) {
     tokens_ptr_ = tokens_ptr;
@@ -298,7 +298,7 @@ Command Parser::parse_command() {
             vec.emplace_back(
                 parse_word()
             );
-        } else if (curr().tt == TokenType::InputRedirection || TokenType::OutputRedirection) {
+        } else if (curr().tt == TokenType::InputRedirection || curr().tt == TokenType::OutputRedirection) {
             RedirectionType r = curr().tt == TokenType::InputRedirection ? RedirectionType::Input : RedirectionType::Output;
             advance();
             redirections.emplace_back(
@@ -323,6 +323,7 @@ Command Parser::parse_command() {
     return Command {
         .args = vec,
         .redirections = redirections,
+        .ps = substitutions,
     };
 }
 
@@ -330,10 +331,11 @@ ProcessSubstitution Parser::parse_process_substitution() {
     SubstitutionType t = curr().content == "<(" ? SubstitutionType::Input : SubstitutionType::Output;
     std::vector<Word> args;
 
+    advance();
     // Requires that there is closing parentheses for the process substitution
     while (curr().tt != TokenType::BackParentheses) {
         args.emplace_back(
-            parse_word();
+            parse_word()
         );
     }
 

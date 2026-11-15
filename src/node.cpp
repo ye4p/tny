@@ -52,7 +52,9 @@ std::ostream& operator<<(std::ostream& out, const Command& c) {
     }
 
     out << "+ with the following process substitutions: \n";
-    out << c.ps;
+    for (const ProcessSubstitution& ps : c.ps) {
+        out << ps;
+    }
 
     out << '\n';
     return out;
