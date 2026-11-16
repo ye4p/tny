@@ -460,17 +460,85 @@ std::tuple<int, std::string> Shell::type(const std::vector<std::string>& args, F
 //
 
 std::vector<std::string> Shell::expand_globs(const std::vector<Word>& args) {
-    std::vector<std::string> res(args.size());
+    std::vector<std::string> res;
     for (const Word& w : args) {
         if (w.quote) {
             res.push_back(w.word);
         } else {
-            std::vector<std::string> expanded = expand_word(w.word);
-            // now try to expand all the globs.
+            // glob_t obj{};
+            // int stat = glob(w.word.data(), GLOB_NOCHECK, nullptr, &obj);
+            // if (stat) {
+            //     perror("glob expansion");
+            //     return res;
+            // }
+            // for (char** current = obj.gl_pathv; *current != nullptr; ++current) {
+            //     res.emplace_back(*current);
+            // }
+
+            // globfree(ptr); // This is the built in POSIX way of glob matching.
+
+            std::filesystem::path current_dir = ".";
+            std::vector<std::string> directory_objects;
+            for (const auto& entry : std::filesystem::directory_iterator(current_dir)) {
+                directory_objects.emplace_back(
+                    entry.path().filename().string()
+                );
+            }
+
+            const std::string& temp = w.word;
+            bool matched = false;
+            for (const std::string& obj : directory_objects) {
+                if (glob_match(temp, obj)) {
+                    res.push_back(obj);
+                    matched = true;
+                }
+            }
+
+            if (!matched) {
+                res.push_back(temp);
+            }
         }
     }
+    return res;
 }
 
-std::vector<std::string> Shell::expand_word(const std::string& w) {
-    
+bool Shell::glob_match(std::string_view pattern, std::string_view str) {
+    size_t p_idx = 0;
+    size_t s_idx = 0;
+    size_t star_idx = std::string_view::npos;
+    size_t match_idx = 0;
+
+    while (s_idx < str.size()) {
+        // ?
+        if (p_idx < pattern.size() && (pattern[p_idx] == '?' || pattern[p_idx] == str[s_idx])) {
+            ++p_idx;
+            ++s_idx;
+        }
+
+        // *
+        else if (p_idx < pattern.size() && pattern[p_idx] == '*') {
+            star_idx = p_idx;
+            match_idx = s_idx;
+            ++p_idx;
+        }
+
+        else if (star_idx != std::string_view::npos) {
+            p_idx = star_idx + 1;
+            ++match_idx;
+            s_idx = match_idx;
+        }
+
+        //mismatch
+        else {
+            return false;
+        }
+    }
+
+    // Remaining * characters
+    while (p_idx < pattern.size() && pattern[p_idx] == '*') {
+        ++p_idx;
+    }
+
+    return p_idx == pattern.size();
 }
+

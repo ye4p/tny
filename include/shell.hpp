@@ -2,6 +2,8 @@
 
 #include <sys/wait.h>
 #include <unistd.h>
+#include <glob.h>
+
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -81,6 +83,6 @@ public:
     std::tuple<int, std::string> type(const std::vector<std::string>& args, FileDescriptor fd);
 
     // Glob expansion:
-    std::vector<std::string> expand_globs(const std::vector<Word> args);
-    std::vector<std::string> expand_word(const std::string& w);
+    std::vector<std::string> expand_globs(const std::vector<Word>& args);
+    bool glob_match(std::string_view pattern, std::string_view str);
 };

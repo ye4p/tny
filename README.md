@@ -1,15 +1,21 @@
 # tny Shell
 
-Supported features:
+## Supported features:
 
-Basic piping, redirections and process substitutions are supported.
+- [x] Basic piping, redirections and process substitutions are supported.
 
-*Logical Operators
+- [x] Logical Operators: && and || 
 
-&& and || 
+- [x] Quotations: ' and "
 
-do work.
+- [x] Globs: * and ?
 
-*Quotations
+## TODO
 
-Also supported, both ' and "
+- [ ] Will probably add in the future.
+
+- [ ] redirections with chosen file descriptors
+
+- [ ] Environment variables support
+
+- [ ] More glob support.

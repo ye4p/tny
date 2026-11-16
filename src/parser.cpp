@@ -355,7 +355,7 @@ Word Parser::parse_word() {
     // In theory it should only add TokenType::String
     return Word {
         .word = t.content,
-        .quote = t.tt == TokenType::StringQuote ? true : false;
+        .quote = (t.tt == TokenType::StringQuote) ? true : false,
     };
 }
 
