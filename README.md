@@ -10,9 +10,7 @@
 
 - [x] Globs: * and ?
 
-## TODO
-
-- [ ] Will probably add in the future.
+## TODO Will probably add in the future.
 
 - [ ] redirections with chosen file descriptors
 
